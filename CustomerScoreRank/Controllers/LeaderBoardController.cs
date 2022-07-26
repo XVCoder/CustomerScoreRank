@@ -8,13 +8,13 @@ namespace CustomerScoreRank.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class LeadBoardController : ControllerBase
+    public class LeaderBoardController : ControllerBase
     {
-        private readonly ILogger<LeadBoardController> _logger;
+        private readonly ILogger<LeaderBoardController> _logger;
         private readonly ICustomerService _customerService;
 
-        public LeadBoardController(
-            ILogger<LeadBoardController> logger,
+        public LeaderBoardController(
+            ILogger<LeaderBoardController> logger,
             ICustomerService customerService
             )
         {
