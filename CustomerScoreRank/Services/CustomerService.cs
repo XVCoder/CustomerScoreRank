@@ -13,25 +13,27 @@ namespace CustomerScoreRank.Services
 
         public async Task<decimal> UpdateScore(long customerId, decimal score)
         {
-            await Task.CompletedTask;
-            if (_customers.Any(x => x.Id == customerId))
-            {// Update
-                var customer = _customers.First(x => x.Id == customerId);
-                customer.Score += score;
-                return customer.Score;
+            decimal finalScore;
+            lock (_customers)
+            {
+                if (_customers.Any(x => x.Id == customerId))
+                {// Update
+                    var customer = _customers.First(x => x.Id == customerId);
+                    customer.Score += score;
+                    finalScore = customer.Score;
+                }
+                else
+                {// Add
+                    var customer = new Customer { Id = customerId, Score = score };
+                    _customers.Add(customer);
+                    finalScore = customer.Score;
+                }
             }
-            else
-            {// Add
-                var customer = new Customer { Id = customerId, Score = score };
-                _customers.Add(customer);
-                return customer.Score;
-            }
+            return await Task.FromResult(finalScore);
         }
 
         public async Task<List<CustomerScoreRankInfo>> GetCustomersByRank(int start, int end)
         {
-            await Task.CompletedTask;
-
             var matchedCustomers = _customers
                 .OrderByDescending(x => x.Score).ThenBy(x => x.Id)
                 .Skip(start - 1)
@@ -39,7 +41,7 @@ namespace CustomerScoreRank.Services
                 .ToList();
 
             var result = new List<CustomerScoreRankInfo>();
-            for (int i = 0; i < matchedCustomers.Count; i++)
+            Parallel.For(0, matchedCustomers.Count, i =>
             {
                 result.Add(new CustomerScoreRankInfo
                 {
@@ -47,9 +49,9 @@ namespace CustomerScoreRank.Services
                     Score = matchedCustomers[i].Score,
                     Rank = start + i
                 });
-            }
+            });
 
-            return result;
+            return await Task.FromResult(result.OrderBy(x => x.Rank).ToList());
         }
 
         public async Task<List<CustomerScoreRankInfo>> GetCustomersByCustomerId(long customerId, int high = 0, int low = 0)
@@ -67,9 +69,7 @@ namespace CustomerScoreRank.Services
 
         public async Task<bool> IsCustomerExist(long customerId)
         {
-            await Task.CompletedTask;
-
-            return _customers.Any(x => x.Id == customerId);
+            return await Task.FromResult(_customers.Any(x => x.Id == customerId));
         }
     }
 }
