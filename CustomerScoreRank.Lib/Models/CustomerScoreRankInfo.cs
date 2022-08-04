@@ -1,4 +1,4 @@
-﻿namespace CustomerScoreRank.Models
+﻿namespace CustomerScoreRank.Lib.Models
 {
     public class CustomerScoreRankInfo
     {

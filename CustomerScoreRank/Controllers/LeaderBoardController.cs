@@ -1,29 +1,25 @@
-using CustomerScoreRank.Models;
-using CustomerScoreRank.Services;
+using CustomerScoreRank.Lib.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
 
-namespace CustomerScoreRank.Controllers
+namespace CustomerScoreRank.API.Controllers
 {
     [ApiController]
     [Route("[controller]")]
     public class LeaderBoardController : ControllerBase
     {
-        private readonly ILogger<LeaderBoardController> _logger;
         private readonly ICustomerService _customerService;
 
         public LeaderBoardController(
-            ILogger<LeaderBoardController> logger,
             ICustomerService customerService
             )
         {
-            _logger = logger;
             _customerService = customerService;
         }
 
         [HttpGet(Name = nameof(GetCustomersByRank))]
-        public async Task<IActionResult> GetCustomersByRank(
+        public IActionResult GetCustomersByRank(
             [Required]
             [Range(1, int.MaxValue)]
             int start,
@@ -36,11 +32,16 @@ namespace CustomerScoreRank.Controllers
                 return BadRequest($"start({start}) should be less then end({end})!");
             }
 
-            return Ok(await _customerService.GetCustomersByRank(start, end));
+            if (_customerService.IsCustomerListEmpty())
+            {
+                return new EmptyResult();
+            }
+
+            return Ok(_customerService.GetCustomersByRank(start, end));
         }
 
         [HttpGet("{customerId}", Name = nameof(GetCustomersByCustomerId))]
-        public async Task<IActionResult> GetCustomersByCustomerId(
+        public IActionResult GetCustomersByCustomerId(
             [Required]
             long customerId,
             [Required]
@@ -50,12 +51,12 @@ namespace CustomerScoreRank.Controllers
             [Range(0, int.MaxValue)]
             int low)
         {
-            if (!await _customerService.IsCustomerExist(customerId))
+            if (!_customerService.IsCustomerExist(customerId))
             {
                 return NotFound($"customer id: {customerId}");
             }
 
-            return Ok(await _customerService.GetCustomersByCustomerId(customerId, high, low));
+            return Ok(_customerService.GetCustomersByCustomerId(customerId, high, low));
         }
     }
 }
