@@ -1,6 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace CustomerScoreRank.Lib.Models
+﻿namespace CustomerScoreRank.Lib.Models
 {
     public class Customer : IComparable<Customer>
     {

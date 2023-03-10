@@ -9,5 +9,6 @@ namespace CustomerScoreRank.Lib.Services
         List<CustomerScoreRankInfo> GetCustomersByCustomerId(long customerId, int high = 0, int low = 0);
         bool IsCustomerExist(long customerId);
         bool IsCustomerListEmpty();
+        long GetCustomerCount();
     }
 }

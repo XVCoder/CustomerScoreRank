@@ -1,13 +1,14 @@
-﻿using CustomerScoreRank.Lib.Models;
-using System.Collections;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
+using CustomerScoreRank.Lib.DataStructures;
+using CustomerScoreRank.Lib.Models;
 
 namespace CustomerScoreRank.Lib.Services
 {
     public class CustomerService : ICustomerService
     {
-        private static List<Customer> _sortedCustomers = new();
+        private static readonly SkipList<Customer> _sortedCustomers = new(new CustomerSearchComparer());
         private static readonly ConcurrentDictionary<long, Customer> _dicCustomers = new();
+        private static ReaderWriterLockSlim _customersReadWriteLock = new();
 
         public CustomerService()
         {
@@ -21,31 +22,31 @@ namespace CustomerScoreRank.Lib.Services
         /// <returns></returns>
         public decimal UpdateScore(long customerId, decimal score)
         {
-            lock (_dicCustomers)
+            Customer updatedCustomer = new();
+
+            try
             {
-                lock ((_sortedCustomers as ICollection).SyncRoot)
+                if (_customersReadWriteLock.TryEnterWriteLock(TimeSpan.FromSeconds(30)))
                 {
-                    Customer customer;
-                    if (_dicCustomers.ContainsKey(customerId))
-                    {// Update
-                        customer = _dicCustomers[customerId];
-                        lock (customer)
-                        {
-                            customer.Score += score;
-                            _sortedCustomers.Sort();
-                            return customer.Score;
-                        }
-                    }
-                    else
-                    {// Add
-                        customer = new Customer { Id = customerId, Score = score };
-                        _dicCustomers[customerId] = customer;
-                        _sortedCustomers.Add(customer);
-                        _sortedCustomers.Sort();
-                        return score;
-                    }
+                    if (_dicCustomers.TryGetValue(customerId, out Customer? oldCustomer) && _sortedCustomers.Exist(oldCustomer))
+                        _sortedCustomers.Remove(oldCustomer);
+
+                    updatedCustomer = _dicCustomers.AddOrUpdate(customerId, new Customer { Id = customerId, Score = score }
+                    , (oldKey, oldValue) => new Customer { Id = oldKey, Score = oldValue.Score + score });
+
+                    _sortedCustomers.Add(updatedCustomer);
+                }
+                else
+                {
+                    throw new TimeoutException("Update score timeout, please wait a moment then retry!");
                 }
             }
+            finally
+            {
+                _customersReadWriteLock.ExitWriteLock();
+            }
+
+            return updatedCustomer.Score;
         }
 
         /// <summary>
@@ -61,42 +62,78 @@ namespace CustomerScoreRank.Lib.Services
                 return new List<CustomerScoreRankInfo>();
             }
 
-            var findCustomers = _sortedCustomers.Skip(start - 1).Take(end - start + 1).ToList();
-            var customerScoreRankInfos = new List<CustomerScoreRankInfo>();
+            List<Customer> findCustomers = new();
+            try
+            {
+                if (_customersReadWriteLock.TryEnterReadLock(TimeSpan.FromSeconds(30)))
+                {
+                    findCustomers.AddRange(_sortedCustomers.GetRangeByIndex(start - 1, end - 1));
+                }
+                else
+                {
+                    throw new TimeoutException("Get customers timeout, please wait a moment then retry!");
+                }
+            }
+            finally
+            {
+                _customersReadWriteLock.ExitReadLock();
+            }
+
+            List<CustomerScoreRankInfo> result = new();
             for (int i = 0; i < findCustomers.Count; i++)
             {
-                customerScoreRankInfos.Add(new CustomerScoreRankInfo
+                result.Add(new CustomerScoreRankInfo
                 {
                     CustomerId = findCustomers[i].Id,
                     Score = findCustomers[i].Score,
                     Rank = start + i
                 });
             }
-            return customerScoreRankInfos;
+            return result;
         }
 
         /// <summary>
-        /// 根据顾客Id获取顾客所处排名前[high]、后[low]个顾客的数据
+        /// 根据顾客Id获取顾客所处排名前[higherCount]、后[lowerCount]个顾客的数据，包括当前顾客本身
         /// </summary>
         /// <param name="customerId">顾客Id</param>
-        /// <param name="high">排在目标顾客前面的顾客个数</param>
-        /// <param name="low">排在目标顾客后面的顾客个数</param>
+        /// <param name="higherCount">排在目标顾客前面的顾客个数</param>
+        /// <param name="lowerCount">排在目标顾客后面的顾客个数</param>
         /// <returns></returns>
-        public List<CustomerScoreRankInfo> GetCustomersByCustomerId(long customerId, int high = 0, int low = 0)
+        public List<CustomerScoreRankInfo> GetCustomersByCustomerId(long customerId, int higherCount = 0, int lowerCount = 0)
         {
-            if (!_dicCustomers.ContainsKey(customerId))
+            if (!_dicCustomers.TryGetValue(customerId, out Customer? targetCustomer))
             {
                 return new List<CustomerScoreRankInfo>();
             }
 
-            // 获取目标顾客在分数排名中的位置（列表索引）
-            var indexOfTargetCustomer = ~_sortedCustomers.BinarySearch(_dicCustomers[customerId]);
+            List<Customer> findCustomers = new();
+            try
+            {
+                if (_customersReadWriteLock.TryEnterReadLock(TimeSpan.FromSeconds(30)))
+                {
+                    findCustomers = _sortedCustomers.GetRangeAroundItem(targetCustomer, higherCount, lowerCount).ToList();
+                }
+                else
+                {
+                    throw new TimeoutException("Get customers timeout, please wait a moment then retry!");
+                }
+            }
+            finally
+            {
+                _customersReadWriteLock.ExitReadLock();
+            }
 
-            // 防止索引溢出
-            high = indexOfTargetCustomer - high < 0 ? 0 : high;
-            low = indexOfTargetCustomer + low > _sortedCustomers.Count - 1 ? _sortedCustomers.Count - 1 : low;
-
-            return GetCustomersByRank(indexOfTargetCustomer - high + 1, indexOfTargetCustomer + low + 1);
+            List<CustomerScoreRankInfo> result = new();
+            for (int i = 0; i < findCustomers.Count; i++)
+            {
+                result.Add(new CustomerScoreRankInfo
+                {
+                    CustomerId = findCustomers[i].Id,
+                    Score = findCustomers[i].Score,
+                    Rank = higherCount + i
+                });
+            }
+            return result;
         }
 
         /// <summary>
@@ -117,5 +154,7 @@ namespace CustomerScoreRank.Lib.Services
         {
             return !_dicCustomers.Any();
         }
+
+        public long GetCustomerCount() => _dicCustomers.LongCount();
     }
 }

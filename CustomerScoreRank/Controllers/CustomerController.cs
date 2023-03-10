@@ -1,6 +1,6 @@
+using System.ComponentModel.DataAnnotations;
 using CustomerScoreRank.Lib.Services;
 using Microsoft.AspNetCore.Mvc;
-using System.ComponentModel.DataAnnotations;
 
 namespace CustomerScoreRank.API.Controllers
 {

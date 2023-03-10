@@ -1,6 +1,7 @@
+using System;
+using System.Diagnostics;
 using CustomerScoreRank.API.Controllers;
 using CustomerScoreRank.Lib.Services;
-using System.Diagnostics;
 using Xunit.Abstractions;
 
 namespace CustomerScoreRank.Tests
@@ -27,17 +28,17 @@ namespace CustomerScoreRank.Tests
         [Fact]
         public void TestUpdateScore()
         {
+            _logger.WriteLine($"current test: {nameof(TestUpdateScore)}");
             _logger.WriteLine($"customer count: {CUSTOMER_COUNT}");
             _logger.WriteLine($"simulaneous request count: {REQUEST_COUNT}");
             Random random = new();
-            Stopwatch sw = new();
-            sw.Start();
-            Parallel.For(1, REQUEST_COUNT, i =>
+            TimeCostWatcher(() =>
             {
-                _customerController.UpdateScore(random.Next(1, CUSTOMER_COUNT), random.Next(-1000, 1000));
+                Parallel.For(1, REQUEST_COUNT, i =>
+                {
+                    _customerController.UpdateScore(random.Next(1, CUSTOMER_COUNT), random.Next(-1000, 1000));
+                });
             });
-            sw.Stop();
-            _logger.WriteLine($"time cost: {sw.Elapsed.TotalMilliseconds} ms");
         }
 
         [Fact]
@@ -45,34 +46,45 @@ namespace CustomerScoreRank.Tests
         {
             TestUpdateScore();
 
-            _logger.WriteLine($"\nsimulaneous request count: {REQUEST_COUNT}");
+            _logger.WriteLine($"current test: {nameof(TestGetCustomersByRank)}");
+            _logger.WriteLine($"simulaneous request count: {REQUEST_COUNT}");
+
             Random random = new();
-            Stopwatch sw = new();
-            sw.Start();
-            Parallel.For(1, REQUEST_COUNT, i =>
+            TimeCostWatcher(() =>
             {
-                var r = random.Next(1, CUSTOMER_COUNT);
-                _leaderBoardController.GetCustomersByRank(r, r + PAGE_SIZE - 1);
+                Parallel.For(1, REQUEST_COUNT, i =>
+                {
+                    var r = random.Next(1, CUSTOMER_COUNT);
+                    _leaderBoardController.GetCustomersByRank(r, r + PAGE_SIZE - 1);
+                });
             });
-            sw.Stop();
-            _logger.WriteLine($"time cost: {sw.Elapsed.TotalMilliseconds} ms");
         }
 
         [Fact]
-        public void GetCustomersByCustomerId()
+        public void TestGetCustomersByCustomerId()
         {
             TestUpdateScore();
 
-            _logger.WriteLine($"\nsimulaneous request count: {REQUEST_COUNT}");
+            _logger.WriteLine($"current test: {nameof(TestGetCustomersByCustomerId)}");
+            _logger.WriteLine($"simulaneous request count: {REQUEST_COUNT}");
+
             Random random = new();
+            TimeCostWatcher(() =>
+            {
+                Parallel.For(1, REQUEST_COUNT, i =>
+                {
+                    _leaderBoardController.GetCustomersByCustomerId(random.Next(1, CUSTOMER_COUNT), random.Next(0, 10), random.Next(0, 10)).ToString();
+                });
+            });
+        }
+
+        private static void TimeCostWatcher(Action action)
+        {
             Stopwatch sw = new();
             sw.Start();
-            Parallel.For(1, REQUEST_COUNT, i =>
-            {
-                _leaderBoardController.GetCustomersByCustomerId(random.Next(1, CUSTOMER_COUNT), random.Next(0, 10), random.Next(0, 10));
-            });
+            action();
             sw.Stop();
-            _logger.WriteLine($"time cost: {sw.Elapsed.TotalMilliseconds} ms");
+            _logger.WriteLine($"time cost: {sw.Elapsed.TotalMilliseconds} ms\r\n");
         }
     }
 }
